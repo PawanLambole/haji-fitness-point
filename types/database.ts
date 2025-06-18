@@ -37,6 +37,7 @@ export interface Database {
       }
       members: {
         Row: {
+          payment_method: string
           id: string
           assignment_number: string
           full_name: string

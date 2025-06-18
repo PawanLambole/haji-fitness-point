@@ -14,7 +14,26 @@
       "backgroundColor": "#000000"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pawan123456.hajifitnesspoint",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.pawan123456.hajifitnesspoint",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": {
+            "scheme": "whatsapp"
+          },
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -35,9 +54,6 @@
       "eas": {
         "projectId": "35338647-9ebd-4b58-8b17-f93b3e687221"
       }
-    },
-    "android": {
-      "package": "com.pawan123456.hajifitnesspoint"
     }
   }
 }

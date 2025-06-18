@@ -3,7 +3,7 @@ import { useColorScheme } from 'react-native';
 
 type Theme = 'light' | 'dark';
 
-interface ThemeContextType {
+export interface ThemeContextType {
   theme: Theme;
   toggleTheme: () => void;
   colors: {
