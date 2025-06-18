@@ -1,0 +1,35 @@
+project/
+├── app/                  # Main application screens
+│   ├── _layout.tsx       # Root layout with providers
+│   ├── (auth)/           # Authentication screens
+│   │   ├── _layout.tsx   # Auth navigation layout
+│   │   ├── login.tsx     # Login screen
+│   │   └── splash.tsx    # Splash screen
+│   └── (app)/            # Main app screens
+│       ├── _layout.tsx   # Tab navigation layout
+│       ├── index.tsx     # Dashboard screen
+│       ├── members.tsx   # Members list screen
+│       ├── (members)/    # Member-related screens
+│       │   ├── _layout.tsx # Members stack layout
+│       │   ├── add.tsx   # Add member screen
+│       │   └── [id].tsx  # Member details screen
+│       ├── admins/       # Admin-related screens
+│       │   ├── _layout.tsx # Admins stack layout
+│       │   ├── index.tsx # Admins list screen
+│       │   ├── add.tsx   # Add admin screen
+│       │   └── [id].tsx  # Admin details screen
+│       └── settings.tsx  # Settings screen
+├── assets/               # Images, fonts, etc.
+├── components/           # Reusable UI components
+├── constants/            # App constants
+│   └── Colors.ts         # Theme colors
+├── context/              # React Context providers
+│   ├── AuthContext.tsx   # Authentication state management
+│   └── ThemeContext.tsx  # Theme state management
+├── hooks/                # Custom React hooks
+├── services/             # API and service functions
+│   └── firebase.ts       # Firebase configuration and helpers
+├── types/                # TypeScript type definitions
+│   └── index.ts          # Type definitions for the app
+└── utils/                # Utility functions
+    └── hash.ts           # Password hashing utility
