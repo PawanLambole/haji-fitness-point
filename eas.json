@@ -18,7 +18,7 @@
         "key": "production-v1"
       },
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "apk"
       },
       "ios": {
         "resourceClass": "m1-medium"
