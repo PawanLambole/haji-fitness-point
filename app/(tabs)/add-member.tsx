@@ -213,7 +213,7 @@ export default function AddMemberScreen() {
         console.error('WhatsApp error:', whatsappError);
         Alert.alert(
           'Success',
-          'Member added successfully! WhatsApp notification failed to send.',
+          '',
           [
             {
               text: 'OK',

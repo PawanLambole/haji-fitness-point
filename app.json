@@ -28,13 +28,13 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "data": {
-            "scheme": "whatsapp"
-          },
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "data": [
+            {
+              "scheme": "https",
+              "host": "wa.me"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
     },
