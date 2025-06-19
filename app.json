@@ -39,7 +39,10 @@
               "scheme": "whatsapp"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -60,7 +63,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "2b7002d1-aa4b-4634-b730-926eba694a1c"
+        "projectId": "798b338e-12b2-4c31-b945-4fcc7c4254ca"
       }
     }
   }
