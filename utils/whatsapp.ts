@@ -1,7 +1,34 @@
-import { Linking } from 'react-native';
+import { Linking, Platform, PermissionsAndroid } from 'react-native';
+
+const requestAndroidPermissions = async () => {
+  try {
+    const permissions = [
+      PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+      PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE
+    ];
+
+    const results = await PermissionsAndroid.requestMultiple(permissions);
+    
+    return Object.values(results).every(
+      result => result === PermissionsAndroid.RESULTS.GRANTED
+    );
+  } catch (err) {
+    console.warn('Permission request error:', err);
+    return false;
+  }
+};
 
 export const sendWhatsAppMessage = async (phoneNumber: string, message: string) => {
   try {
+    // Request permissions on Android
+    if (Platform.OS === 'android') {
+      const hasPermissions = await requestAndroidPermissions();
+      if (!hasPermissions) {
+        console.error('Required permissions not granted');
+        return false;
+      }
+    }
+
     // Remove any non-digit characters and ensure it starts with country code
     const cleanNumber = phoneNumber.replace(/\D/g, '');
     const formattedNumber = cleanNumber.startsWith('91') ? cleanNumber : `91${cleanNumber}`;
