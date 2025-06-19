@@ -15,13 +15,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react-native';
+import { supabase } from '@/lib/supabase';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const router = useRouter();
   const { login } = useAuth();
   const { colors } = useTheme();
@@ -43,6 +44,21 @@ export default function LoginScreen() {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!email) {
+      Alert.alert('Input Required', 'Please enter your email first.');
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+
+    if (error) {
+      Alert.alert('Error', error.message);
+    } else {
+      Alert.alert('Check Email', 'Password reset link has been sent to your email.');
+    }
+  };
+
   return (
     <LinearGradient
       colors={[colors.background, colors.surface]}
@@ -60,10 +76,8 @@ export default function LoginScreen() {
               resizeMode="contain"
             />
           </View>
-          
-          <Text style={[styles.title, { color: colors.text }]}>
-            Welcome Back
-          </Text>
+
+          <Text style={[styles.title, { color: colors.text }]}>Welcome Back</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Sign in to manage HAJI FITNESS POINT
           </Text>
@@ -100,6 +114,17 @@ export default function LoginScreen() {
                 )}
               </TouchableOpacity>
             </View>
+
+            {/* Forgot Password Button */}
+           <TouchableOpacity
+  onPress={() => router.push('/reset-password')}
+  style={styles.forgotPasswordButton}
+>
+  <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>
+    Forgot Password?
+  </Text>
+</TouchableOpacity>
+
 
             <TouchableOpacity
               style={[styles.loginButton, { backgroundColor: colors.primary }]}
@@ -171,6 +196,14 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
+    fontFamily: 'Inter-Medium',
+  },
+  forgotPasswordButton: {
+    alignSelf: 'flex-end',
+    marginBottom: 12,
+  },
+  forgotPasswordText: {
+    fontSize: 14,
     fontFamily: 'Inter-Medium',
   },
   loginButton: {
