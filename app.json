@@ -23,7 +23,9 @@
     "android": {
       "package": "com.pawan123456.hajifitnesspoint",
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
       "intentFilters": [
         {
@@ -32,6 +34,9 @@
             {
               "scheme": "https",
               "host": "wa.me"
+            },
+            {
+              "scheme": "whatsapp"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]

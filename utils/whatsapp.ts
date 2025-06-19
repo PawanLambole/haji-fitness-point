@@ -1,51 +1,72 @@
-import { Linking, Platform, PermissionsAndroid } from 'react-native';
+import { Linking, Platform } from 'react-native';
 
-const requestAndroidPermissions = async () => {
-  try {
-    const permissions = [
-      PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
-      PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE
-    ];
-
-    const results = await PermissionsAndroid.requestMultiple(permissions);
-    
-    return Object.values(results).every(
-      result => result === PermissionsAndroid.RESULTS.GRANTED
-    );
-  } catch (err) {
-    console.warn('Permission request error:', err);
-    return false;
-  }
+const formatPhoneNumber = (phoneNumber: string): string => {
+  // Remove all non-digit characters
+  const cleanNumber = phoneNumber.replace(/\D/g, '');
+  console.log('Clean number:', cleanNumber);
+  
+  // Remove leading zero if present
+  const withoutLeadingZero = cleanNumber.startsWith('0') 
+    ? cleanNumber.substring(1) 
+    : cleanNumber;
+  console.log('Without leading zero:', withoutLeadingZero);
+  
+  // Add country code if not present
+  const formattedNumber = withoutLeadingZero.startsWith('91') 
+    ? withoutLeadingZero 
+    : `91${withoutLeadingZero}`;
+  console.log('Final formatted number:', formattedNumber);
+  
+  return formattedNumber;
 };
 
 export const sendWhatsAppMessage = async (phoneNumber: string, message: string) => {
   try {
-    // Request permissions on Android
+    console.log('Attempting to send WhatsApp message');
+    console.log('Original phone:', phoneNumber);
+    console.log('Message:', message);
+
+    const formattedNumber = formatPhoneNumber(phoneNumber);
+    const encodedMessage = encodeURIComponent(message);
+
+    // For Android, try direct intent first
     if (Platform.OS === 'android') {
-      const hasPermissions = await requestAndroidPermissions();
-      if (!hasPermissions) {
-        console.error('Required permissions not granted');
-        return false;
+      const androidUrl = `whatsapp://send?phone=${formattedNumber}&text=${encodedMessage}`;
+      console.log('Trying Android URL:', androidUrl);
+      
+      if (await Linking.canOpenURL(androidUrl)) {
+        console.log('Opening Android URL...');
+        await Linking.openURL(androidUrl);
+        return true;
       }
     }
 
-    // Remove any non-digit characters and ensure it starts with country code
-    const cleanNumber = phoneNumber.replace(/\D/g, '');
-    const formattedNumber = cleanNumber.startsWith('91') ? cleanNumber : `91${cleanNumber}`;
-    
-    const encodedMessage = encodeURIComponent(message);
-    const whatsappUrl = `https://wa.me/${formattedNumber}?text=${encodedMessage}`;
-    
-    const canOpen = await Linking.canOpenURL(whatsappUrl);
-    if (canOpen) {
-      await Linking.openURL(whatsappUrl);
-      return true;
-    } else {
-      console.error('WhatsApp is not installed');
-      return false;
+    // For iOS, try direct whatsapp URL
+    if (Platform.OS === 'ios') {
+      const iosUrl = `whatsapp://send?phone=${formattedNumber}&text=${encodedMessage}`;
+      console.log('Trying iOS URL:', iosUrl);
+      
+      if (await Linking.canOpenURL(iosUrl)) {
+        console.log('Opening iOS URL...');
+        await Linking.openURL(iosUrl);
+        return true;
+      }
     }
+
+    // Fallback to universal link
+    const universalUrl = `https://api.whatsapp.com/send?phone=${formattedNumber}&text=${encodedMessage}`;
+    console.log('Trying universal URL:', universalUrl);
+    
+    if (await Linking.canOpenURL(universalUrl)) {
+      console.log('Opening universal URL...');
+      await Linking.openURL(universalUrl);
+      return true;
+    }
+
+    console.log('No URLs could be opened');
+    return false;
   } catch (error) {
-    console.error('Error sending WhatsApp message:', error);
+    console.error('Error in sendWhatsAppMessage:', error);
     return false;
   }
 };

@@ -9,6 +9,7 @@ import {
   Alert,
   Image,
 } from 'react-native';
+import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMembers } from '@/hooks/useMembers';
@@ -124,25 +125,18 @@ export default function AddMemberScreen() {
     }
 
     setIsLoading(true);
+    setError(null);
 
     try {
-      console.log('=== Starting member creation process ===');
-      console.log('User ID:', user.id);
-      console.log('Session active:', !!session);
-      
       // Generate assignment number if not provided
       const assignmentNumber = formData.assignmentNumber.trim() || await generateAssignmentNumber();
-      console.log('Assignment number:', assignmentNumber);
       
       // Calculate end date if not provided
       const membershipEnd = formData.membershipEnd || calculateEndDate(formData.membershipStart);
-      console.log('Membership end date:', membershipEnd);
 
       const totalAmount = parseFloat(formData.totalAmount) || 0;
       const discountAmount = parseFloat(formData.discountAmount) || 0;
       const finalAmount = totalAmount - discountAmount;
-
-      console.log('Payment amounts - Total:', totalAmount, 'Discount:', discountAmount, 'Final:', finalAmount);
 
       // Prepare member data
       const memberInsertData = {
@@ -157,8 +151,6 @@ export default function AddMemberScreen() {
         photo_url: formData.photo,
         is_active: true,
       };
-
-      console.log('Member insert data:', memberInsertData);
       
       // Add member to database
       const newMember = await addMember(memberInsertData);
@@ -167,12 +159,8 @@ export default function AddMemberScreen() {
         throw new Error('Failed to create member - no data returned');
       }
 
-      console.log('Member created successfully:', newMember.id);
-
       // Add payment record if amount > 0
       if (finalAmount > 0) {
-        console.log('Adding payment record...');
-        
         const paymentData = {
           member_id: newMember.id,
           amount: finalAmount,
@@ -180,68 +168,64 @@ export default function AddMemberScreen() {
           payment_date: formData.membershipStart,
           notes: discountAmount > 0 ? `Discount applied: ₹${discountAmount}` : null,
         };
-
-        console.log('Payment data:', paymentData);
         
         await addPayment(paymentData);
-        console.log('Payment added successfully');
       }
 
-      // Send WhatsApp message (non-blocking)
-      try {
-        const whatsappMessage = createMembershipMessage(
-          formData.fullName,
-          formData.membershipStart,
-          membershipEnd,
-          assignmentNumber
-        );
+      // Reset loading state before showing alert
+      setIsLoading(false);
 
-        const whatsappSent = await sendWhatsAppMessage(formData.phoneNumber, whatsappMessage);
-        console.log('WhatsApp message sent:', whatsappSent);
+      // Prepare WhatsApp message
+      const whatsappMessage = createMembershipMessage(
+        formData.fullName,
+        formData.membershipStart,
+        membershipEnd,
+        assignmentNumber
+      );
 
-        Alert.alert(
-          'Success',
-          `Member added successfully! ${whatsappSent ? 'WhatsApp notification sent.' : 'WhatsApp notification failed.'}`,
-          [
-            {
-              text: 'OK',
-              onPress: resetForm,
-            },
-          ]
-        );
-      } catch (whatsappError) {
-        console.error('WhatsApp error:', whatsappError);
-        Alert.alert(
-          'Success',
-          '',
-          [
-            {
-              text: 'OK',
-              onPress: resetForm,
-            },
-          ]
-        );
-      }
-    } catch (error: any) {
-      console.error('=== Error adding member ===');
-      console.error('Error details:', error);
-      console.error('Error message:', error.message);
-      console.error('Error code:', error.code);
-      
-      let errorMessage = 'Failed to add member. Please try again.';
-      
-      if (error.message) {
-        errorMessage = error.message;
-      } else if (error.code === '23505') {
-        errorMessage = 'Assignment number already exists. Please try again.';
-      } else if (error.code === '23503') {
-        errorMessage = 'Database constraint error. Please check your data.';
-      } else if (error.code === '23514') {
-        errorMessage = 'Invalid data: Please check all fields are filled correctly.';
-      }
-      
-      setError(errorMessage);
-    } finally {
+      Alert.alert(
+        'Member Added',
+        'Member was added successfully. Send welcome message via WhatsApp?',
+        [
+          { 
+            text: 'Skip', 
+            style: 'cancel',
+            onPress: () => router.back()
+          },
+          {
+            text: 'Send Message',
+            style: 'default',
+            onPress: async () => {
+              try {
+                console.log('Attempting to send WhatsApp message...');
+                const success = await sendWhatsAppMessage(formData.phoneNumber, whatsappMessage);
+                console.log('WhatsApp send result:', success);
+                
+                if (!success) {
+                  Alert.alert(
+                    'WhatsApp Error',
+                    'Could not open WhatsApp. Make sure WhatsApp is installed on your device.',
+                    [{ text: 'OK', onPress: () => router.back() }]
+                  );
+                } else {
+                  setTimeout(() => router.back(), 500); // Give WhatsApp time to open
+                }
+              } catch (error) {
+                console.error('Failed to send WhatsApp message:', error);
+                Alert.alert(
+                  'Error',
+                  'Could not send WhatsApp message. Please try again.',
+                  [{ text: 'OK', onPress: () => router.back() }]
+                );
+              }
+            }
+          }
+        ]
+      );
+
+    } catch (err: any) {
+      console.error('Error saving member:', err);
+      setError(err.message || 'Failed to add member');
       setIsLoading(false);
     }
   };
