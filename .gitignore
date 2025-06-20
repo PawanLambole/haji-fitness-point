@@ -6,13 +6,49 @@ expo-env.d.ts
 # EAS Build
 .expo/
 .expo-shared/
+web-build/
+dist/
+
+# Node modules
 node_modules/
-npm-debug.*
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Android
+android/app/debug.keystore
+android/app/my-release-key.keystore
+android/.gradle/
+android/local.properties
+
+# iOS
+ios/Pods/
+ios/build/
+
+# Env
+.env
+.env.*
+
+# VSCode
+.vscode/
+
+# Misc
+*.bak
+*.tmp
+
+# Ignore test coverage
+coverage/
+
+# Ignore Expo credentials
 *.jks
 *.p8
 *.p12
 *.key
-*.mobileprovision
-*.orig.*
-web-build/
-dist/
+*.pem
