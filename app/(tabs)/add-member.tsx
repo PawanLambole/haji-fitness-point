@@ -342,7 +342,7 @@ export default function AddMemberScreen() {
               <Calendar size={20} color={colors.textSecondary} />
               <TextInput
                 style={[styles.input, { color: colors.text }]}
-                placeholder="YYYY-MM-DD"
+                placeholder="DD-MM-YYYY"
                 placeholderTextColor={colors.textSecondary}
                 value={formData.joiningDate}
                 onChangeText={(text) => setFormData(prev => ({ ...prev, joiningDate: text }))}

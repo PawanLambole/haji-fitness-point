@@ -123,8 +123,38 @@ export default function DashboardScreen() {
         <View style={styles.statsGrid}>
           {stats.map((stat, index) => {
             const Icon = stat.icon;
+            // Only make non-Revenue cards touchable
+            if (stat.title !== 'Revenue') {
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.statCard,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                  onPress={() => router.push('/members')}
+                >
+                  <View style={styles.statHeader}>
+                    <Icon size={24} color={stat.color} />
+                    <Text style={[styles.statValue, { color: colors.text }]}>
+                      {stat.value}
+                    </Text>
+                  </View>
+                  <Text style={[styles.statTitle, { color: colors.textSecondary }]}>
+                    {stat.title}
+                  </Text>
+                  <Text style={[styles.statChange, { color: stat.color }]}>
+                    {stat.change}
+                  </Text>
+                </TouchableOpacity>
+              );
+            }
+            // Render Revenue card as a plain View
             return (
-              <TouchableOpacity
+              <View
                 key={index}
                 style={[
                   styles.statCard,
@@ -146,7 +176,7 @@ export default function DashboardScreen() {
                 <Text style={[styles.statChange, { color: stat.color }]}>
                   {stat.change}
                 </Text>
-              </TouchableOpacity>
+              </View>
             );
           })}
         </View>
