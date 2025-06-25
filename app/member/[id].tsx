@@ -8,6 +8,7 @@ import {
   Pressable,
   Alert,
   Image,
+  RefreshControl,
 } from 'react-native';
 import { useLocalSearchParams, Stack, router } from 'expo-router';
 import { useTheme, ThemeContextType } from '../../contexts/ThemeContext';
@@ -15,6 +16,8 @@ import { supabase } from '../../lib/supabase';
 import { Database } from '../../types/database';
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
+import React from 'react';
 
 type Member = Database['public']['Tables']['members']['Row'];
 
@@ -26,46 +29,58 @@ export default function MemberProfile() {
   const [error, setError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<string>('Not specified');
   const [imageError, setImageError] = useState(false); // new state
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchMemberDetails = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('members')
+        .select('*')
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      setMember(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load member details');
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const fetchLatestPaymentMethod = async () => {
+    try {
+      const { data } = await supabase
+        .from('payments')
+        .select('payment_method')
+        .eq('member_id', id)
+        .order('payment_date', { ascending: false })
+        .limit(1)
+        .single();
+      if (data) {
+        setPaymentMethod(data.payment_method || 'Not specified');
+      }
+    } catch {
+      setPaymentMethod('Not specified');
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([fetchMemberDetails(), fetchLatestPaymentMethod()]);
+  };
 
   useEffect(() => {
-    async function fetchMemberDetails() {
-      try {
-        const { data, error } = await supabase
-          .from('members')
-          .select('*')
-          .eq('id', id)
-          .single();
-
-        if (error) throw error;
-        setMember(data);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load member details');
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    async function fetchLatestPaymentMethod() {
-      try {
-        const { data } = await supabase
-          .from('payments')
-          .select('payment_method')
-          .eq('member_id', id)
-          .order('payment_date', { ascending: false })
-          .limit(1)
-          .single();
-
-        if (data) {
-          setPaymentMethod(data.payment_method || 'Not specified');
-        }
-      } catch {
-        setPaymentMethod('Not specified');
-      }
-    }
-
     fetchMemberDetails();
     fetchLatestPaymentMethod();
   }, [id]);
+  // Auto-refresh: refetch data when coming back to this screen
+  // Use useFocusEffect from expo-router for focus events
+  useFocusEffect(
+    React.useCallback(() => {
+      onRefresh();
+    }, [id])
+  );
 
   const handleDelete = async () => {
     Alert.alert('Delete Member', 'Are you sure you want to delete this member?', [
@@ -103,17 +118,21 @@ export default function MemberProfile() {
     );
   }
 
-  const isActive = new Date(member.membership_end) >= new Date();
+  // Use is_active from DB if present, otherwise fallback to date logic
+  const isActive = typeof member.is_active === 'boolean' ? member.is_active : (new Date(member.membership_end) >= new Date());
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+    >
       <Stack.Screen options={{ title: 'Member Profile' }} />
 
       <View style={styles.header}>
         {/* Show image if valid and no error; else show initial */}
         {member.photo_url && member.photo_url.trim() !== '' && !imageError ? (
           <Image
-            source={{ uri: member.photo_url }}
+            source={{ uri: member.photo_url.startsWith('http') ? member.photo_url : supabase.storage.from('member-photos').getPublicUrl(member.photo_url).data.publicUrl }}
             style={styles.avatarContainer}
             resizeMode="cover"
             onError={() => setImageError(true)}

@@ -17,6 +17,7 @@ import { useMembers } from '@/hooks/useMembers';
 import { usePayments } from '@/hooks/usePayments';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { IndianRupee } from 'lucide-react-native';
 import { sendWhatsAppMessage, createMembershipMessage } from '@/utils/whatsapp';
 import { 
@@ -32,6 +33,7 @@ import {
   CheckCircle
 } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase'; // <-- Make sure you have this import and supabase client setup
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
 // Define membership plans
 const MEMBERSHIP_PLANS = [
@@ -75,6 +77,11 @@ export default function AddMemberScreen() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Date picker state
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [datePickerField, setDatePickerField] = useState<null | 'joiningDate' | 'membershipStart' | 'membershipEnd'>(null);
+  const [tempDate, setTempDate] = useState(new Date());
 
   if (!user || !session) {
     return (
@@ -291,25 +298,24 @@ export default function AddMemberScreen() {
   // Helper to upload image to Supabase Storage and return public URL
   const uploadPhotoToSupabase = async (uri: string, memberName: string) => {
     try {
-      // Fetch the image as a blob
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      // Create a unique filename
       const fileExt = uri.split('.').pop();
       const fileName = `member_${memberName.replace(/\s+/g, '_')}_${Date.now()}.${fileExt}`;
       const filePath = `photos/${fileName}`;
 
-      // Upload to Supabase Storage
+      // Read file as base64
+      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      const fileBuffer = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+
       let { error: uploadError } = await supabase.storage
-        .from('member-photos') // <-- Use your bucket name
-        .upload(filePath, blob, {
+        .from('member-photos')
+        .upload(filePath, fileBuffer, {
+          contentType: 'image/jpeg', // or detect from fileExt
           cacheControl: '3600',
           upsert: false,
         });
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
       const { data } = supabase.storage.from('member-photos').getPublicUrl(filePath);
       return data.publicUrl;
     } catch (err) {
@@ -452,6 +458,35 @@ export default function AddMemberScreen() {
     setError(null);
   };
 
+  // Helper to open date picker for a field
+  const openDatePicker = (field: 'joiningDate' | 'membershipStart' | 'membershipEnd', currentValue: string) => {
+    setDatePickerField(field);
+    setTempDate(currentValue && isValidDateString(currentValue) ? new Date(currentValue) : new Date());
+    setDatePickerVisible(true);
+  };
+
+  const handleDateConfirm = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    setDatePickerVisible(false);
+    setDatePickerField(null);
+    setTempDate(new Date());
+    setFormData(prev => ({ ...prev, [datePickerField!]: dateStr }));
+    // If plan mode and membershipStart changed, recalculate end date
+    if (datePickerField === 'membershipStart' && isPlanMode && selectedPlan) {
+      const plan = MEMBERSHIP_PLANS.find(p => p.id === selectedPlan);
+      if (plan) {
+        const endDate = calculateEndDate(dateStr, plan.duration);
+        setFormData(prev => ({ ...prev, membershipEnd: endDate }));
+      }
+    }
+  };
+
+  const handleDateCancel = () => {
+    setDatePickerVisible(false);
+    setDatePickerField(null);
+    setTempDate(new Date());
+  };
+
   return (
     <LinearGradient
       colors={[colors.background, colors.surface]}
@@ -557,16 +592,16 @@ export default function AddMemberScreen() {
           {/* Joining Date */}
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: colors.text }]}>Joining Date</Text>
-            <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <TouchableOpacity
+              style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={() => openDatePicker('joiningDate', formData.joiningDate)}
+              activeOpacity={0.7}
+            >
               <Calendar size={20} color={colors.textSecondary} />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textSecondary}
-                value={formData.joiningDate}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, joiningDate: text }))}
-              />
-            </View>
+              <Text style={[styles.input, { color: colors.text }]}>
+                {formData.joiningDate || 'YYYY-MM-DD'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Plan Mode Toggle */}
@@ -629,38 +664,39 @@ export default function AddMemberScreen() {
           {/* Membership Start Date */}
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: colors.text }]}>Membership Start Date</Text>
-            <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <TouchableOpacity
+              style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={() => openDatePicker('membershipStart', formData.membershipStart)}
+              activeOpacity={0.7}
+            >
               <Calendar size={20} color={colors.textSecondary} />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textSecondary}
-                value={formData.membershipStart}
-                onChangeText={handleStartDateChange}
-              />
-            </View>
+              <Text style={[styles.input, { color: colors.text }]}>
+                {formData.membershipStart || 'YYYY-MM-DD'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Membership End Date (Show only in manual mode or display calculated date in plan mode) */}
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: colors.text }]}>Membership End Date</Text>
-            <View style={[
-              styles.inputContainer, 
-              { 
-                backgroundColor: isPlanMode ? colors.border + '30' : colors.surface, 
-                borderColor: colors.border 
-              }
-            ]}>
+            <TouchableOpacity
+              style={[
+                styles.inputContainer,
+                {
+                  backgroundColor: isPlanMode ? colors.border + '30' : colors.surface,
+                  borderColor: colors.border,
+                  opacity: isPlanMode ? 0.7 : 1,
+                },
+              ]}
+              onPress={() => !isPlanMode && openDatePicker('membershipEnd', formData.membershipEnd)}
+              activeOpacity={isPlanMode ? 1 : 0.7}
+              disabled={isPlanMode}
+            >
               <Calendar size={20} color={colors.textSecondary} />
-              <TextInput
-                style={[styles.input, { color: isPlanMode ? colors.textSecondary : colors.text }]}
-                placeholder={isPlanMode ? "Auto-calculated from plan" : "YYYY-MM-DD"}
-                placeholderTextColor={colors.textSecondary}
-                value={formData.membershipEnd}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, membershipEnd: text }))}
-                editable={!isPlanMode}
-              />
-            </View>
+              <Text style={[styles.input, { color: isPlanMode ? colors.textSecondary : colors.text }]}>
+                {formData.membershipEnd || (isPlanMode ? 'Auto-calculated from plan' : 'YYYY-MM-DD')}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Payment Details */}
@@ -780,6 +816,18 @@ export default function AddMemberScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Date Picker Modal */}
+        <DateTimePickerModal
+          isVisible={datePickerVisible}
+          mode="date"
+          date={tempDate}
+          onConfirm={handleDateConfirm}
+          onCancel={handleDateCancel}
+          maximumDate={new Date(2100, 11, 31)}
+          minimumDate={new Date(2000, 0, 1)}
+          display="default"
+        />
       </ScrollView>
     </LinearGradient>
   );

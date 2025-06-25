@@ -18,6 +18,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { User, Phone, Calendar, DollarSign, Percent, Camera, Save, RefreshCw } from 'lucide-react-native';
+import * as FileSystem from 'expo-file-system';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
 type Member = Database['public']['Tables']['members']['Row'];
 
@@ -38,6 +40,17 @@ export default function EditMember() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Track the original photo path for deletion
+  const [originalPhotoPath, setOriginalPhotoPath] = useState<string | null>(null);
+  const [pendingPhoto, setPendingPhoto] = useState<string | null>(null);
+  const [pendingPhotoPath, setPendingPhotoPath] = useState<string | null>(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
+
+  // Date picker state
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [datePickerField, setDatePickerField] = useState<null | 'joiningDate' | 'membershipStart' | 'membershipEnd'>(null);
+  const [tempDate, setTempDate] = useState(new Date());
+
   useEffect(() => {
     async function fetchMember() {
       setIsLoading(true);
@@ -55,12 +68,65 @@ export default function EditMember() {
         setDiscountAmount(data.discount_amount?.toString() || '0');
         setPhotoUrl(data.photo_url || null);
         setIsActive(data.is_active ?? true);
+        if (data.photo_url) {
+          // Always store the full storage path (e.g. 'photos/abc.jpg')
+          if (data.photo_url.startsWith('http')) {
+            // Extract after 'member-photos/'
+            const match = data.photo_url.match(/member-photos\/(.+)$/);
+            setOriginalPhotoPath(match && match[1] ? `photos/${match[1]}` : null);
+          } else if (data.photo_url.startsWith('photos/')) {
+            setOriginalPhotoPath(data.photo_url);
+          } else {
+            setOriginalPhotoPath(null);
+          }
+        }
       } else if (error) {
         setError(error.message);
       }
     }
     fetchMember();
   }, [id]);
+
+  // Helper to upload image to Supabase Storage and return public URL
+  const uploadPhotoToSupabase = async (uri: string, memberName: string) => {
+    try {
+      const fileExt = uri.split('.').pop();
+      const fileName = `member_${memberName.replace(/\s+/g, '_')}_${Date.now()}.${fileExt}`;
+      const filePath = `photos/${fileName}`;
+      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      const fileBuffer = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      let { error: uploadError } = await supabase.storage
+        .from('member-photos')
+        .upload(filePath, fileBuffer, {
+          contentType: 'image/jpeg',
+          cacheControl: '3600',
+          upsert: false,
+        });
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from('member-photos').getPublicUrl(filePath);
+      return { publicUrl: data.publicUrl, filePath };
+    } catch (err) {
+      console.error('Photo upload error:', err);
+      throw new Error('Failed to upload photo');
+    }
+  };
+
+  // Helper to delete image from Supabase Storage
+  const deletePhotoFromSupabase = async (photoPath: string) => {
+    if (!photoPath) return;
+    let filePath = photoPath;
+    // If it's a public URL, extract the path after '/object/public/member-photos/'
+    if (photoPath.startsWith('http')) {
+      const match = photoPath.match(/member-photos\/(.+)$/);
+      if (match && match[1]) filePath = `photos/${match[1]}`;
+    }
+    // filePath should now be 'photos/abc.jpg'
+    try {
+      await supabase.storage.from('member-photos').remove([filePath]);
+    } catch (err) {
+      console.error('Photo delete error:', err);
+    }
+  };
 
   // Updated pickImage to allow choosing camera or gallery
   const pickImage = async () => {
@@ -83,7 +149,8 @@ export default function EditMember() {
               quality: 0.8,
             });
             if (!result.canceled) {
-              setPhotoUrl(result.assets[0].uri);
+              setPendingPhoto(result.assets[0].uri);
+              setRemovePhoto(false);
             }
           },
         },
@@ -102,7 +169,8 @@ export default function EditMember() {
               quality: 0.8,
             });
             if (!result.canceled) {
-              setPhotoUrl(result.assets[0].uri);
+              setPendingPhoto(result.assets[0].uri);
+              setRemovePhoto(false);
             }
           },
         },
@@ -114,27 +182,60 @@ export default function EditMember() {
   async function handleSave() {
     setIsLoading(true);
     setError(null);
-    const { error } = await supabase
-      .from('members')
-      .update({
-        full_name: fullName,
-        phone_number: phoneNumber,
-        assignment_number: assignmentNumber,
-        total_amount: parseFloat(totalAmount),
-        joining_date: joiningDate,
-        membership_start: membershipStart,
-        membership_end: membershipEnd,
-        discount_amount: parseFloat(discountAmount) || 0,
-        photo_url: photoUrl,
-        is_active: isActive,
-      })
-      .eq('id', id);
-    setIsLoading(false);
-    if (!error) {
-      Alert.alert('Success', 'Member updated successfully');
-      router.back();
-    } else {
-      setError(error.message);
+    let newPhotoUrl = photoUrl;
+    let newPhotoPath = originalPhotoPath;
+    try {
+      // Debug log for date values
+      console.log('Saving member with dates:', {
+        joiningDate,
+        membershipStart,
+        membershipEnd
+      });
+      // If removing photo
+      if (removePhoto && originalPhotoPath) {
+        await deletePhotoFromSupabase(originalPhotoPath);
+        newPhotoUrl = null;
+        newPhotoPath = null;
+      }
+      // If uploading new photo
+      if (pendingPhoto && fullName.trim()) {
+        const uploadResult = await uploadPhotoToSupabase(pendingPhoto, fullName.trim());
+        newPhotoUrl = uploadResult.publicUrl;
+        newPhotoPath = uploadResult.filePath.replace('photos/', '');
+        // Delete old photo if exists and not already removed
+        if (originalPhotoPath && !removePhoto) {
+          await deletePhotoFromSupabase(originalPhotoPath);
+        }
+      }
+      const { error } = await supabase
+        .from('members')
+        .update({
+          full_name: fullName,
+          phone_number: phoneNumber,
+          assignment_number: assignmentNumber,
+          total_amount: parseFloat(totalAmount),
+          joining_date: joiningDate,
+          membership_start: membershipStart,
+          membership_end: membershipEnd,
+          discount_amount: parseFloat(discountAmount) || 0,
+          photo_url: newPhotoUrl,
+          is_active: isActive,
+        })
+        .eq('id', id);
+      setIsLoading(false);
+      if (!error) {
+        setPhotoUrl(newPhotoUrl);
+        setPendingPhoto(null);
+        setRemovePhoto(false);
+        setOriginalPhotoPath(newPhotoPath);
+        Alert.alert('Success', 'Member updated successfully');
+        router.back();
+      } else {
+        setError(error.message);
+      }
+    } catch (err) {
+      setIsLoading(false);
+      setError('Failed to update member');
     }
   }
 
@@ -178,6 +279,29 @@ export default function EditMember() {
     );
   }
 
+  // Helper to open date picker for a field
+  const openDatePicker = (field: 'joiningDate' | 'membershipStart' | 'membershipEnd', currentValue: string) => {
+    setDatePickerField(field);
+    setTempDate(currentValue && currentValue.length === 10 ? new Date(currentValue) : new Date());
+    setDatePickerVisible(true);
+  };
+
+  const handleDateConfirm = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    setDatePickerVisible(false);
+    setDatePickerField(null);
+    setTempDate(new Date());
+    if (datePickerField === 'joiningDate') setJoiningDate(dateStr);
+    if (datePickerField === 'membershipStart') setMembershipStart(dateStr);
+    if (datePickerField === 'membershipEnd') setMembershipEnd(dateStr);
+  };
+
+  const handleDateCancel = () => {
+    setDatePickerVisible(false);
+    setDatePickerField(null);
+    setTempDate(new Date());
+  };
+
   return (
     <LinearGradient
       colors={[colors.background, colors.surface]}
@@ -209,8 +333,10 @@ export default function EditMember() {
               ]}
               onPress={pickImage}
             >
-              {photoUrl ? (
-                <Image source={{ uri: photoUrl.startsWith('http') ? photoUrl : photoUrl }} style={styles.photo} />
+              {pendingPhoto ? (
+                <Image source={{ uri: pendingPhoto }} style={styles.photo} />
+              ) : photoUrl && !removePhoto ? (
+                <Image source={{ uri: photoUrl }} style={styles.photo} />
               ) : (
                 <View style={styles.photoPlaceholder}>
                   <Camera size={32} color={colors.textSecondary} />
@@ -220,11 +346,14 @@ export default function EditMember() {
                 </View>
               )}
             </TouchableOpacity>
-            {/* Remove Photo Button - visible only if photo is added */}
-            {photoUrl && (
+            {/* Remove Photo Button - visible only if photo is added or pending */}
+            {(pendingPhoto || (photoUrl && !removePhoto)) && (
               <TouchableOpacity
                 style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14, alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.error + '10' }}
-                onPress={() => setPhotoUrl(null)}
+                onPress={() => {
+                  setPendingPhoto(null);
+                  setRemovePhoto(true);
+                }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Text style={{ color: colors.error, fontFamily: 'Inter-Bold', fontSize: 15, marginRight: 6 }}>
@@ -286,46 +415,46 @@ export default function EditMember() {
           {/* Joining Date */}
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: colors.text }]}>Joining Date</Text>
-            <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <TouchableOpacity
+              style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={() => openDatePicker('joiningDate', joiningDate)}
+              activeOpacity={0.7}
+            >
               <Calendar size={20} color={colors.textSecondary} />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textSecondary}
-                value={joiningDate}
-                onChangeText={setJoiningDate}
-              />
-            </View>
+              <Text style={[styles.input, { color: colors.text }]}>
+                {joiningDate || 'YYYY-MM-DD'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Membership Start */}
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: colors.text }]}>Membership Start</Text>
-            <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <TouchableOpacity
+              style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={() => openDatePicker('membershipStart', membershipStart)}
+              activeOpacity={0.7}
+            >
               <Calendar size={20} color={colors.textSecondary} />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textSecondary}
-                value={membershipStart}
-                onChangeText={setMembershipStart}
-              />
-            </View>
+              <Text style={[styles.input, { color: colors.text }]}>
+                {membershipStart || 'YYYY-MM-DD'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Membership End */}
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: colors.text }]}>Membership End</Text>
-            <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <TouchableOpacity
+              style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={() => openDatePicker('membershipEnd', membershipEnd)}
+              activeOpacity={0.7}
+            >
               <Calendar size={20} color={colors.textSecondary} />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textSecondary}
-                value={membershipEnd}
-                onChangeText={setMembershipEnd}
-              />
-            </View>
+              <Text style={[styles.input, { color: colors.text }]}>
+                {membershipEnd || 'YYYY-MM-DD'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Payment Details */}
@@ -415,6 +544,18 @@ export default function EditMember() {
             <Text style={styles.saveButtonText}>Renew Membership (+1 Month)</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Date Picker Modal */}
+        <DateTimePickerModal
+          isVisible={datePickerVisible}
+          mode="date"
+          date={tempDate}
+          onConfirm={handleDateConfirm}
+          onCancel={handleDateCancel}
+          maximumDate={new Date(2100, 11, 31)}
+          minimumDate={new Date(2000, 0, 1)}
+          display="default"
+        />
       </ScrollView>
     </LinearGradient>
   );
