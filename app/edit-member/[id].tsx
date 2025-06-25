@@ -62,21 +62,53 @@ export default function EditMember() {
     fetchMember();
   }, [id]);
 
+  // Updated pickImage to allow choosing camera or gallery
   const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please grant camera roll permissions to add photos.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-    if (!result.canceled) {
-      setPhotoUrl(result.assets[0].uri);
-    }
+    Alert.alert(
+      'Edit Photo',
+      'Choose a method to update the photo',
+      [
+        {
+          text: 'Take Photo',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Permission needed', 'Please grant camera permissions to take a photo.');
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.8,
+            });
+            if (!result.canceled) {
+              setPhotoUrl(result.assets[0].uri);
+            }
+          },
+        },
+        {
+          text: 'Choose from Gallery',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Permission needed', 'Please grant camera roll permissions to add photos.');
+              return;
+            }
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.8,
+            });
+            if (!result.canceled) {
+              setPhotoUrl(result.assets[0].uri);
+            }
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
   };
 
   async function handleSave() {
@@ -178,7 +210,7 @@ export default function EditMember() {
               onPress={pickImage}
             >
               {photoUrl ? (
-                <Image source={{ uri: photoUrl }} style={styles.photo} />
+                <Image source={{ uri: photoUrl.startsWith('http') ? photoUrl : photoUrl }} style={styles.photo} />
               ) : (
                 <View style={styles.photoPlaceholder}>
                   <Camera size={32} color={colors.textSecondary} />
@@ -188,6 +220,21 @@ export default function EditMember() {
                 </View>
               )}
             </TouchableOpacity>
+            {/* Remove Photo Button - visible only if photo is added */}
+            {photoUrl && (
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14, alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.error + '10' }}
+                onPress={() => setPhotoUrl(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={{ color: colors.error, fontFamily: 'Inter-Bold', fontSize: 15, marginRight: 6 }}>
+                  ×
+                </Text>
+                <Text style={{ color: colors.error, fontFamily: 'Inter-Bold', fontSize: 15 }}>
+                  Remove Photo
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Assignment Number */}
