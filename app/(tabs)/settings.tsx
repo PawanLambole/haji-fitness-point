@@ -257,10 +257,18 @@ export default function SettingsScreen() {
           
           <View style={styles.infoItem}>
             <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Build</Text>
-            <Text style={[styles.infoValue, { color: colors.text }]}>2024.01.15</Text>
+            <Text style={[styles.infoValue, { color: colors.text }]}>28.06.2025</Text>
+          </View>
+
+          {/* Developed By Section */}
+          <View style={[styles.infoItem, { flexDirection: 'column', alignItems: 'flex-start', marginTop: 16 }]}>
+            <Text style={[styles.infoLabel, { color: colors.textSecondary, marginBottom: 2 }]}>Developed By</Text>
+            <Text style={[styles.infoValue, { color: colors.text }]}>Pawan, Atharv and Vedant/ Debug Dhule</Text>
+            <Text style={[styles.infoLabel, { color: colors.textSecondary, marginTop: 8 }]}>Contact</Text>
+            <Text style={[styles.infoValue, { color: colors.text }]}>pavanlambole578@gmail.com</Text>
+            <Text style={[styles.infoLabel, { color: colors.textSecondary, marginTop: 8 }]}>© {new Date().getFullYear()} All rights reserved.</Text>
           </View>
         </View>
-
         
       </ScrollView>
     </LinearGradient>
