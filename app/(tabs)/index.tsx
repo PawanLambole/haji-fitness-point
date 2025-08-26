@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,7 +25,7 @@ import { useRouter } from 'expo-router';
 export default function DashboardScreen() {
   const { colors } = useTheme();
   const { admin } = useAuth();
-  const { members } = useMembers();
+  const { members, refresh } = useMembers(); // <-- add refresh here
   const { getPaymentStats } = usePayments();
   const router = useRouter();
 
@@ -34,6 +35,7 @@ export default function DashboardScreen() {
     cashPayments: 0,
     upiPayments: 0,
   });
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     const loadPaymentStats = async () => {
@@ -42,6 +44,14 @@ export default function DashboardScreen() {
     };
     loadPaymentStats();
   }, []);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refresh(); // <-- refresh members from backend
+    const stats = await getPaymentStats();
+    setPaymentStats(stats);
+    setRefreshing(false);
+  };
 
   const activeMembers = members.filter((member) => {
     const isActive = member.is_active;
@@ -105,7 +115,17 @@ export default function DashboardScreen() {
       colors={[colors.background, colors.surface]}
       style={styles.container}
     >
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
         <View style={styles.header}>
           <Text style={[styles.greeting, { color: colors.text }]}>
             Welcome back, {admin?.name}!

@@ -7,6 +7,7 @@ export interface ThemeContextType {
   theme: Theme;
   toggleTheme: () => void;
   colors: {
+    secondary: string;
     primary: string;
     background: string;
     surface: string;
@@ -23,6 +24,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 const lightColors = {
   primary: '#e0c724',
+  secondary: '#4f46e5',
   background: '#ffffff',
   surface: '#f8f9fa',
   text: '#1a1a1a',
@@ -35,6 +37,7 @@ const lightColors = {
 
 const darkColors = {
   primary: '#e0c724',
+  secondary: '#818cf8',
   background: '#0f0f0f',
   surface: '#1a1a1a',
   text: '#ffffff',

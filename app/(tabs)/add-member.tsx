@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
   Image,
+  Switch,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -16,14 +17,50 @@ import { useMembers } from '@/hooks/useMembers';
 import { usePayments } from '@/hooks/usePayments';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import { IndianRupee } from 'lucide-react-native';
 import { sendWhatsAppMessage, createMembershipMessage } from '@/utils/whatsapp';
-import { User, Phone, Calendar, DollarSign, Camera, Save, Percent, CircleAlert as AlertCircle } from 'lucide-react-native';
+import { 
+  User, 
+  Phone, 
+  Calendar, 
+  DollarSign, 
+  Camera, 
+  Save, 
+  Percent, 
+  CircleAlert as AlertCircle,
+  Settings,
+  CheckCircle
+} from 'lucide-react-native';
+import { supabase } from '@/lib/supabase'; // <-- Make sure you have this import and supabase client setup
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
+
+// Define membership plans
+const MEMBERSHIP_PLANS = [
+  {
+    id: '1month',
+    name: '1 Month Plan',
+    duration: 1,
+    price: 700,
+    description: 'Perfect for beginners'
+  },
+  {
+    id: '3months',
+    name: '3 Months Plan', 
+    duration: 3,
+    price: 1500,
+    description: 'Most popular choice'
+  }
+];
 
 export default function AddMemberScreen() {
   const { colors } = useTheme();
   const { user, session } = useAuth();
   const { addMember, generateAssignmentNumber } = useMembers();
   const { addPayment } = usePayments();
+  
+  const [isPlanMode, setIsPlanMode] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     assignmentNumber: '',
@@ -40,6 +77,11 @@ export default function AddMemberScreen() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Date picker state
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [datePickerField, setDatePickerField] = useState<null | 'joiningDate' | 'membershipStart' | 'membershipEnd'>(null);
+  const [tempDate, setTempDate] = useState(new Date());
 
   if (!user || !session) {
     return (
@@ -60,30 +102,136 @@ export default function AddMemberScreen() {
     );
   }
 
+  // Updated pickImage to allow choosing camera or gallery
   const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please grant camera roll permissions to add photos.');
-      return;
+    Alert.alert(
+      'Add Photo',
+      'Choose a method to add a photo',
+      [
+        {
+          text: 'Take Photo',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Permission needed', 'Please grant camera permissions to take a photo.');
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.8,
+            });
+            if (!result.canceled) {
+              setFormData(prev => ({ ...prev, photo: result.assets[0].uri }));
+            }
+          },
+        },
+        {
+          text: 'Choose from Gallery',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Permission needed', 'Please grant camera roll permissions to add photos.');
+              return;
+            }
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.8,
+            });
+            if (!result.canceled) {
+              setFormData(prev => ({ ...prev, photo: result.assets[0].uri }));
+            }
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  // Update calculateEndDate to handle invalid dates gracefully
+  const calculateEndDate = (startDate: string, months: number) => {
+    if (!isValidDateString(startDate)) {
+      setError('Please enter a valid membership start date (YYYY-MM-DD)');
+      return '';
     }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-
-    if (!result.canceled) {
-      setFormData(prev => ({ ...prev, photo: result.assets[0].uri }));
+    try {
+      const start = new Date(startDate);
+      start.setMonth(start.getMonth() + months);
+      return start.toISOString().split('T')[0];
+    } catch {
+      setError('Date value out of bounds');
+      return '';
     }
   };
 
-  const calculateEndDate = (startDate: string, months: number = 6) => {
-    const start = new Date(startDate);
-    start.setMonth(start.getMonth() + months);
-    return start.toISOString().split('T')[0];
+  const handlePlanModeToggle = (value: boolean) => {
+    setIsPlanMode(value);
+    setSelectedPlan(null);
+    setError(null);
+    
+    if (!value) {
+      // Reset to manual mode
+      setFormData(prev => ({
+        ...prev,
+        totalAmount: '',
+        membershipEnd: '',
+      }));
+    }
   };
+
+  const handlePlanSelect = (planId: string) => {
+    const plan = MEMBERSHIP_PLANS.find(p => p.id === planId);
+    if (!plan) return;
+
+    setSelectedPlan(planId);
+    const endDate = calculateEndDate(formData.membershipStart, plan.duration);
+    
+    setFormData(prev => ({
+      ...prev,
+      totalAmount: plan.price.toString(),
+      membershipEnd: endDate,
+    }));
+  };
+
+  const handleStartDateChange = (date: string) => {
+    setFormData(prev => ({ ...prev, membershipStart: date }));
+
+    // If in plan mode and plan is selected, recalculate end date
+    if (isPlanMode && selectedPlan) {
+      if (!isValidDateString(date)) {
+        setError('Please enter a valid membership start date (YYYY-MM-DD)');
+        setFormData(prev => ({ ...prev, membershipEnd: '' }));
+        return;
+      }
+      const plan = MEMBERSHIP_PLANS.find(p => p.id === selectedPlan);
+      if (plan) {
+        const endDate = calculateEndDate(date, plan.duration);
+        setFormData(prev => ({ ...prev, membershipEnd: endDate }));
+      }
+    }
+  };
+
+  // Add this helper function
+  function isValidDateString(dateStr: string) {
+    if (!dateStr) return false;
+    // YYYY-MM-DD format and valid date
+    const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return false;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return false;
+    // Check for out-of-bounds years
+    const year = parseInt(match[1], 10);
+    if (year < 1900 || year > 2100) return false;
+    // Check for month/day validity
+    const month = parseInt(match[2], 10);
+    const day = parseInt(match[3], 10);
+    if (month < 1 || month > 12) return false;
+    if (day < 1 || day > 31) return false;
+    return true;
+  }
 
   const validateForm = () => {
     setError(null);
@@ -103,6 +251,16 @@ export default function AddMemberScreen() {
       return false;
     }
 
+    if (isPlanMode && !selectedPlan) {
+      setError('Please select a membership plan');
+      return false;
+    }
+
+    if (!isPlanMode && !formData.membershipEnd.trim()) {
+      setError('Membership end date is required in manual mode');
+      return false;
+    }
+
     const totalAmount = parseFloat(formData.totalAmount) || 0;
     const discountAmount = parseFloat(formData.discountAmount) || 0;
 
@@ -115,8 +273,55 @@ export default function AddMemberScreen() {
       setError('Amounts cannot be negative');
       return false;
     }
+
+    // Date validation
+    if (!isValidDateString(formData.joiningDate)) {
+      setError('Please enter a valid joining date (YYYY-MM-DD)');
+      return false;
+    }
+    if (!isValidDateString(formData.membershipStart)) {
+      setError('Please enter a valid membership start date (YYYY-MM-DD)');
+      return false;
+    }
+    if (!isPlanMode && !isValidDateString(formData.membershipEnd)) {
+      setError('Please enter a valid membership end date (YYYY-MM-DD)');
+      return false;
+    }
+    if (isPlanMode && formData.membershipEnd && !isValidDateString(formData.membershipEnd)) {
+      setError('Calculated membership end date is invalid. Please check the plan or start date.');
+      return false;
+    }
     
     return true;
+  };
+
+  // Helper to upload image to Supabase Storage and return public URL
+  const uploadPhotoToSupabase = async (uri: string, memberName: string) => {
+    try {
+      const fileExt = uri.split('.').pop();
+      const fileName = `member_${memberName.replace(/\s+/g, '_')}_${Date.now()}.${fileExt}`;
+      const filePath = `photos/${fileName}`;
+
+      // Read file as base64
+      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      const fileBuffer = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+
+      let { error: uploadError } = await supabase.storage
+        .from('member-photos')
+        .upload(filePath, fileBuffer, {
+          contentType: 'image/jpeg', // or detect from fileExt
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('member-photos').getPublicUrl(filePath);
+      return data.publicUrl;
+    } catch (err) {
+      console.error('Photo upload error:', err);
+      throw new Error('Failed to upload photo');
+    }
   };
 
   const handleSaveMember = async () => {
@@ -130,13 +335,18 @@ export default function AddMemberScreen() {
     try {
       // Generate assignment number if not provided
       const assignmentNumber = formData.assignmentNumber.trim() || await generateAssignmentNumber();
-      
-      // Calculate end date if not provided
-      const membershipEnd = formData.membershipEnd || calculateEndDate(formData.membershipStart);
+      // Calculate end date if not provided (for manual mode)
+      const membershipEnd = formData.membershipEnd || calculateEndDate(formData.membershipStart, 6);
 
       const totalAmount = parseFloat(formData.totalAmount) || 0;
       const discountAmount = parseFloat(formData.discountAmount) || 0;
       const finalAmount = totalAmount - discountAmount;
+
+      // --- Upload photo if present ---
+      let photoUrl = null;
+      if (formData.photo) {
+        photoUrl = await uploadPhotoToSupabase(formData.photo, formData.fullName.trim());
+      }
 
       // Prepare member data
       const memberInsertData = {
@@ -148,7 +358,7 @@ export default function AddMemberScreen() {
         membership_end: membershipEnd,
         total_amount: totalAmount,
         discount_amount: discountAmount,
-        photo_url: formData.photo,
+        photo_url: photoUrl, // <-- Use uploaded photo URL
         is_active: true,
       };
       
@@ -164,7 +374,7 @@ export default function AddMemberScreen() {
         const paymentData = {
           member_id: newMember.id,
           amount: finalAmount,
-          payment_method: formData.paymentMethod,
+          payment_method: formData.paymentMethod, // payment_method belongs here
           payment_date: formData.membershipStart,
           notes: discountAmount > 0 ? `Discount applied: ₹${discountAmount}` : null,
         };
@@ -243,7 +453,38 @@ export default function AddMemberScreen() {
       paymentMethod: 'cash',
       photo: null,
     });
+    setIsPlanMode(false);
+    setSelectedPlan(null);
     setError(null);
+  };
+
+  // Helper to open date picker for a field
+  const openDatePicker = (field: 'joiningDate' | 'membershipStart' | 'membershipEnd', currentValue: string) => {
+    setDatePickerField(field);
+    setTempDate(currentValue && isValidDateString(currentValue) ? new Date(currentValue) : new Date());
+    setDatePickerVisible(true);
+  };
+
+  const handleDateConfirm = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    setDatePickerVisible(false);
+    setDatePickerField(null);
+    setTempDate(new Date());
+    setFormData(prev => ({ ...prev, [datePickerField!]: dateStr }));
+    // If plan mode and membershipStart changed, recalculate end date
+    if (datePickerField === 'membershipStart' && isPlanMode && selectedPlan) {
+      const plan = MEMBERSHIP_PLANS.find(p => p.id === selectedPlan);
+      if (plan) {
+        const endDate = calculateEndDate(dateStr, plan.duration);
+        setFormData(prev => ({ ...prev, membershipEnd: endDate }));
+      }
+    }
+  };
+
+  const handleDateCancel = () => {
+    setDatePickerVisible(false);
+    setDatePickerField(null);
+    setTempDate(new Date());
   };
 
   return (
@@ -281,12 +522,25 @@ export default function AddMemberScreen() {
               ) : (
                 <View style={styles.photoPlaceholder}>
                   <Camera size={32} color={colors.textSecondary} />
-                  <Text style={[styles.photoText, { color: colors.textSecondary }]}>
-                    Add Photo
-                  </Text>
+                  <Text style={[styles.photoText, { color: colors.textSecondary }]}>Add Photo</Text>
                 </View>
               )}
             </TouchableOpacity>
+            {/* Remove Photo Button - visible only if photo is added */}
+            {formData.photo && (
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14, alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.error + '10' }}
+                onPress={() => setFormData(prev => ({ ...prev, photo: null }))}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={{ color: colors.error, fontFamily: 'Inter-Bold', fontSize: 15, marginRight: 6 }}>
+                  ×
+                </Text>
+                <Text style={{ color: colors.error, fontFamily: 'Inter-Bold', fontSize: 15 }}>
+                  Remove Photo
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Assignment Number */}
@@ -338,62 +592,133 @@ export default function AddMemberScreen() {
           {/* Joining Date */}
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: colors.text }]}>Joining Date</Text>
-            <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <TouchableOpacity
+              style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={() => openDatePicker('joiningDate', formData.joiningDate)}
+              activeOpacity={0.7}
+            >
               <Calendar size={20} color={colors.textSecondary} />
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                placeholder="DD-MM-YYYY"
-                placeholderTextColor={colors.textSecondary}
-                value={formData.joiningDate}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, joiningDate: text }))}
-              />
-            </View>
+              <Text style={[styles.input, { color: colors.text }]}>
+                {formData.joiningDate || 'YYYY-MM-DD'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Membership Duration */}
-          <View style={styles.row}>
-            <View style={[styles.inputGroup, { flex: 1 }]}>
-              <Text style={[styles.label, { color: colors.text }]}>Start Date</Text>
-              <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Calendar size={20} color={colors.textSecondary} />
-                <TextInput
-                  style={[styles.input, { color: colors.text }]}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={colors.textSecondary}
-                  value={formData.membershipStart}
-                  onChangeText={(text) => setFormData(prev => ({ ...prev, membershipStart: text }))}
-                />
+          {/* Plan Mode Toggle */}
+          <View style={styles.toggleSection}>
+            <View style={styles.toggleContainer}>
+              <Settings size={20} color={colors.textSecondary} />
+              <Text style={[styles.toggleLabel, { color: colors.text }]}>
+                Use Predefined Plans
+              </Text>
+              <Switch
+                value={isPlanMode}
+                onValueChange={handlePlanModeToggle}
+                trackColor={{ false: colors.border, true: colors.primary + '40' }}
+                thumbColor={isPlanMode ? colors.primary : colors.textSecondary}
+              />
+            </View>
+           
+          </View>
+
+          {/* Membership Plans (Show only in plan mode) */}
+          {isPlanMode && (
+            <View style={styles.plansSection}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Select Membership Plan</Text>
+              <View style={styles.plansContainer}>
+                {MEMBERSHIP_PLANS.map((plan) => (
+                  <TouchableOpacity
+                    key={plan.id}
+                    style={[
+                      styles.planCard,
+                      {
+                        backgroundColor: selectedPlan === plan.id ? colors.primary + '20' : colors.surface,
+                        borderColor: selectedPlan === plan.id ? colors.primary : colors.border,
+                      },
+                    ]}
+                    onPress={() => handlePlanSelect(plan.id)}
+                  >
+                    <View style={styles.planHeader}>
+                      <View style={styles.planInfo}>
+                        <Text style={[styles.planName, { color: colors.text }]}>{plan.name}</Text>
+                        <Text style={[styles.planDescription, { color: colors.textSecondary }]}>
+                          {plan.description}
+                        </Text>
+                      </View>
+                      {selectedPlan === plan.id && (
+                        <CheckCircle size={24} color={colors.primary} />
+                      )}
+                    </View>
+                    <View style={styles.planPricing}>
+                      <Text style={[styles.planPrice, { color: colors.primary }]}>₹{plan.price}</Text>
+                      <Text style={[styles.planDuration, { color: colors.textSecondary }]}>
+                        {plan.duration} month{plan.duration > 1 ? 's' : ''}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
               </View>
             </View>
-            
-            <View style={[styles.inputGroup, { flex: 1 }]}>
-              <Text style={[styles.label, { color: colors.text }]}>End Date</Text>
-              <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Calendar size={20} color={colors.textSecondary} />
-                <TextInput
-                  style={[styles.input, { color: colors.text }]}
-                  placeholder="Auto-calculated"
-                  placeholderTextColor={colors.textSecondary}
-                  value={formData.membershipEnd}
-                  onChangeText={(text) => setFormData(prev => ({ ...prev, membershipEnd: text }))}
-                />
-              </View>
-            </View>
+          )}
+
+          {/* Membership Start Date */}
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, { color: colors.text }]}>Membership Start Date</Text>
+            <TouchableOpacity
+              style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={() => openDatePicker('membershipStart', formData.membershipStart)}
+              activeOpacity={0.7}
+            >
+              <Calendar size={20} color={colors.textSecondary} />
+              <Text style={[styles.input, { color: colors.text }]}>
+                {formData.membershipStart || 'YYYY-MM-DD'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Membership End Date (Show only in manual mode or display calculated date in plan mode) */}
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, { color: colors.text }]}>Membership End Date</Text>
+            <TouchableOpacity
+              style={[
+                styles.inputContainer,
+                {
+                  backgroundColor: isPlanMode ? colors.border + '30' : colors.surface,
+                  borderColor: colors.border,
+                  opacity: isPlanMode ? 0.7 : 1,
+                },
+              ]}
+              onPress={() => !isPlanMode && openDatePicker('membershipEnd', formData.membershipEnd)}
+              activeOpacity={isPlanMode ? 1 : 0.7}
+              disabled={isPlanMode}
+            >
+              <Calendar size={20} color={colors.textSecondary} />
+              <Text style={[styles.input, { color: isPlanMode ? colors.textSecondary : colors.text }]}>
+                {formData.membershipEnd || (isPlanMode ? 'Auto-calculated from plan' : 'YYYY-MM-DD')}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Payment Details */}
           <View style={styles.row}>
             <View style={[styles.inputGroup, { flex: 1 }]}>
               <Text style={[styles.label, { color: colors.text }]}>Total Amount</Text>
-              <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <DollarSign size={20} color={colors.textSecondary} />
+              <View style={[
+                styles.inputContainer, 
+                { 
+                  backgroundColor: isPlanMode ? colors.border + '30' : colors.surface, 
+                  borderColor: colors.border 
+                }
+              ]}>
+                <IndianRupee size={20} color={colors.textSecondary} />
                 <TextInput
-                  style={[styles.input, { color: colors.text }]}
-                  placeholder="0"
+                  style={[styles.input, { color: isPlanMode ? colors.textSecondary : colors.text }]}
+                  placeholder={isPlanMode ? "Auto-filled from plan" : "0"}
                   placeholderTextColor={colors.textSecondary}
                   value={formData.totalAmount}
                   onChangeText={(text) => setFormData(prev => ({ ...prev, totalAmount: text }))}
                   keyboardType="numeric"
+                  editable={!isPlanMode}
                 />
               </View>
             </View>
@@ -491,6 +816,18 @@ export default function AddMemberScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Date Picker Modal */}
+        <DateTimePickerModal
+          isVisible={datePickerVisible}
+          mode="date"
+          date={tempDate}
+          onConfirm={handleDateConfirm}
+          onCancel={handleDateCancel}
+          maximumDate={new Date(2100, 11, 31)}
+          minimumDate={new Date(2000, 0, 1)}
+          display="default"
+        />
       </ScrollView>
     </LinearGradient>
   );
@@ -601,6 +938,75 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Medium',
   },
+  toggleSection: {
+    marginBottom: 24,
+    padding: 16,
+    borderRadius: 12,
+    
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  toggleLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+  },
+  toggleDescription: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    lineHeight: 20,
+  },
+  plansSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    marginBottom: 16,
+  },
+  plansContainer: {
+    gap: 12,
+  },
+  planCard: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
+  planHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  planInfo: {
+    flex: 1,
+  },
+  planName: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    marginBottom: 4,
+  },
+  planDescription: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+  },
+  planPricing: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  planPrice: {
+    fontSize: 20,
+    fontFamily: 'Inter-Bold',
+  },
+  planDuration: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+  },
   row: {
     flexDirection: 'row',
     gap: 12,
@@ -642,14 +1048,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
+    gap: 8,
+    paddingVertical: 18,
     borderRadius: 12,
     marginTop: 24,
-    gap: 8,
   },
+
   saveButtonText: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
-    color: '#000',
   },
+
 });

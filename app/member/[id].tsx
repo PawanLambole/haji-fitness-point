@@ -1,11 +1,23 @@
 import { useEffect, useState } from 'react';
-import { View, ScrollView, StyleSheet, ActivityIndicator, Text, Pressable } from 'react-native';
+import {
+  View,
+  ScrollView,
+  StyleSheet,
+  ActivityIndicator,
+  Text,
+  Pressable,
+  Alert,
+  Image,
+  RefreshControl,
+} from 'react-native';
 import { useLocalSearchParams, Stack, router } from 'expo-router';
 import { useTheme, ThemeContextType } from '../../contexts/ThemeContext';
 import { supabase } from '../../lib/supabase';
 import { Database } from '../../types/database';
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
+import React from 'react';
 
 type Member = Database['public']['Tables']['members']['Row'];
 
@@ -15,57 +27,83 @@ export default function MemberProfile() {
   const [member, setMember] = useState<Member | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<string>('');
+  const [paymentMethod, setPaymentMethod] = useState<string>('Not specified');
+  const [imageError, setImageError] = useState(false); // new state
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchMemberDetails = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('members')
+        .select('*')
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      setMember(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load member details');
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const fetchLatestPaymentMethod = async () => {
+    try {
+      const { data } = await supabase
+        .from('payments')
+        .select('payment_method')
+        .eq('member_id', id)
+        .order('payment_date', { ascending: false })
+        .limit(1)
+        .single();
+      if (data) {
+        setPaymentMethod(data.payment_method || 'Not specified');
+      }
+    } catch {
+      setPaymentMethod('Not specified');
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([fetchMemberDetails(), fetchLatestPaymentMethod()]);
+  };
 
   useEffect(() => {
-    async function fetchMemberDetails() {
-      try {
-        const { data, error } = await supabase
-          .from('members')
-          .select('*')
-          .eq('id', id)
-          .single();
-
-        if (error) throw error;
-        setMember(data);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load member details');
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    async function fetchLatestPaymentMethod() {
-      try {
-        const { data, error } = await supabase
-          .from('payments')
-          .select('payment_method')
-          .eq('member_id', id)
-          .order('payment_date', { ascending: false })
-          .limit(1)
-          .single();
-        if (!error && data) {
-          setPaymentMethod(data.payment_method);
-        } else {
-          setPaymentMethod('Not specified');
-        }
-      } catch {
-        setPaymentMethod('Not specified');
-      }
-    }
-
     fetchMemberDetails();
     fetchLatestPaymentMethod();
   }, [id]);
+  // Auto-refresh: refetch data when coming back to this screen
+  // Use useFocusEffect from expo-router for focus events
+  useFocusEffect(
+    React.useCallback(() => {
+      onRefresh();
+    }, [id])
+  );
+
+  const handleDelete = async () => {
+    Alert.alert('Delete Member', 'Are you sure you want to delete this member?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          const { error } = await supabase.from('members').delete().eq('id', id);
+          if (!error) {
+            router.back();
+          } else {
+            Alert.alert('Error', error.message);
+          }
+        },
+      },
+    ]);
+  };
 
   if (isLoading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <Stack.Screen options={{ 
-          title: 'Member Profile',
-          headerStyle: { backgroundColor: colors.background },
-          headerTintColor: colors.text,
-        }} />
+        <Stack.Screen options={{ title: 'Member Profile' }} />
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
@@ -74,42 +112,63 @@ export default function MemberProfile() {
   if (error || !member) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <Stack.Screen options={{ 
-          title: 'Member Profile',
-          headerStyle: { backgroundColor: colors.background },
-          headerTintColor: colors.text,
-        }} />
+        <Stack.Screen options={{ title: 'Member Profile' }} />
         <Text style={{ color: colors.error }}>{error || 'Member not found'}</Text>
       </View>
     );
   }
 
-  const isActive = new Date(member.membership_end) >= new Date();
+  // Use is_active from DB if present, otherwise fallback to date logic
+  const isActive = typeof member.is_active === 'boolean' ? member.is_active : (new Date(member.membership_end) >= new Date());
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen 
-        options={{ 
-          title: 'Member Profile',
-          headerStyle: { backgroundColor: colors.background },
-          headerTintColor: colors.text,
-        }} 
-      />
-      
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+    >
+      <Stack.Screen options={{ title: 'Member Profile' }} />
+
       <View style={styles.header}>
-        <View style={[styles.avatarContainer, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.avatarText, { color: colors.text }]}>
-            {member.full_name.charAt(0).toUpperCase()}
-          </Text>
-        </View>
+        {/* Show image if valid and no error; else show initial */}
+        {member.photo_url && member.photo_url.trim() !== '' && !imageError ? (
+          <Image
+            source={{ uri: member.photo_url.startsWith('http') ? member.photo_url : supabase.storage.from('member-photos').getPublicUrl(member.photo_url).data.publicUrl }}
+            style={styles.avatarContainer}
+            resizeMode="cover"
+            onError={() => setImageError(true)}
+          />
+        ) : (
+          <View
+            style={[
+              styles.avatarContainer,
+              {
+                backgroundColor: colors.surface,
+                justifyContent: 'center',
+                alignItems: 'center',
+              },
+            ]}
+          >
+            <Text style={[styles.avatarText, { color: colors.text }]}>
+              {member.full_name?.trim()?.charAt(0)?.toUpperCase() || '?'}
+            </Text>
+          </View>
+        )}
+
         <Text style={[styles.name, { color: colors.text }]}>{member.full_name}</Text>
+
         <View style={styles.idContainer}>
           <Text style={[styles.membershipId, { color: colors.primary }]}>
             {member.assignment_number}
           </Text>
         </View>
+
         <View style={styles.statusContainer}>
-          <View style={[styles.statusBadge, { backgroundColor: isActive ? colors.success : colors.error }]}>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: isActive ? colors.success : colors.error },
+            ]}
+          >
             <Text style={styles.statusText}>{isActive ? 'Active' : 'Inactive'}</Text>
           </View>
         </View>
@@ -131,7 +190,10 @@ export default function MemberProfile() {
         <InfoCard
           icon="time-outline"
           label="Membership Period"
-          value={`${format(new Date(member.membership_start), 'dd/MM/yyyy')} - ${format(new Date(member.membership_end), 'dd/MM/yyyy')}`}
+          value={`${format(new Date(member.membership_start), 'dd/MM/yyyy')} - ${format(
+            new Date(member.membership_end),
+            'dd/MM/yyyy'
+          )}`}
           colors={colors}
         />
         <InfoCard
@@ -149,10 +211,17 @@ export default function MemberProfile() {
       </View>
 
       <View style={styles.actionButtons}>
-        {/* Only show Delete button */}
-        <Pressable 
+        <Pressable
+          style={[styles.button, { backgroundColor: colors.primary }]}
+          onPress={() => router.push({ pathname: '/edit-member/[id]', params: { id } })}
+        >
+          <Ionicons name="create-outline" size={24} color="white" />
+          <Text style={styles.buttonText}>Edit Member</Text>
+        </Pressable>
+
+        <Pressable
           style={[styles.button, { backgroundColor: colors.error }]}
-          onPress={() => {/* TODO: Implement delete functionality */}}
+          onPress={handleDelete}
         >
           <Ionicons name="trash-outline" size={24} color="white" />
           <Text style={styles.buttonText}>Delete Member</Text>
@@ -167,7 +236,7 @@ type InfoCardProps = {
   label: string;
   value: string;
   colors: ThemeContextType['colors'];
-}
+};
 
 function InfoCard({ icon, label, value, colors }: InfoCardProps) {
   return (
@@ -184,14 +253,8 @@ function InfoCard({ icon, label, value, colors }: InfoCardProps) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 16,
-  },
+  container: { flex: 1 },
+  header: { alignItems: 'center', paddingVertical: 24, paddingHorizontal: 16 },
   avatarContainer: {
     width: 80,
     height: 80,
@@ -199,64 +262,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+    backgroundColor: '#eee',
+    overflow: 'hidden',
   },
-  avatarText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-  },
-  name: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  idContainer: {
-    marginBottom: 8,
-  },
-  membershipId: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  statusContainer: {
-    marginTop: 8,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  statusText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  infoContainer: {
-    padding: 16,
-    gap: 12,
-  },
+  avatarText: { fontSize: 32, fontWeight: 'bold' },
+  name: { fontSize: 24, fontWeight: 'bold', marginBottom: 8 },
+  idContainer: { marginBottom: 8 },
+  membershipId: { fontSize: 16, fontWeight: '600' },
+  statusContainer: { marginTop: 8 },
+  statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
+  statusText: { color: 'white', fontSize: 14, fontWeight: '600' },
+  infoContainer: { padding: 16, gap: 12 },
   infoCard: {
     flexDirection: 'row',
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
   },
-  infoIconContainer: {
-    marginRight: 16,
-  },
-  infoTextContainer: {
-    flex: 1,
-  },
-  infoLabel: {
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  infoValue: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  actionButtons: {
-    padding: 16,
-    gap: 12,
-  },
+  infoIconContainer: { marginRight: 16 },
+  infoTextContainer: { flex: 1 },
+  infoLabel: { fontSize: 14, marginBottom: 4 },
+  infoValue: { fontSize: 16, fontWeight: '600' },
+  actionButtons: { padding: 16, gap: 12 },
   button: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -265,9 +292,5 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 8,
   },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  buttonText: { color: 'white', fontSize: 16, fontWeight: '600' },
 });
