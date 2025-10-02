@@ -1,109 +1,54 @@
-# Haji Fitness Point v1.0.0 Release Notes
+(# Haji Fitness Point — Release v1.0.0)
 
-## Release Date: October 2, 2025
+Release date: 2025-10-02
 
-Welcome to the initial release of Haji Fitness Point, a comprehensive fitness management application designed to streamline gym operations and enhance member experience.
+This document contains the release notes for v1.0.0 of Haji Fitness Point.
 
-## Features
+## Summary
 
-### Member Management
-- ✨ Complete member registration and profile management
-- 📊 Member status tracking and analytics
-- 🔍 Quick search and filtering capabilities
-- 📝 Detailed member history
+Initial stable release of the Haji Fitness Point mobile app. This release includes core member management, payments, and authentication features implemented with Expo + React Native and Supabase as the backend.
 
-### Payment System
-- 💳 Flexible payment processing
-- 📅 Monthly fee tracking
-- 🔔 Payment reminder system
-- 📈 Payment history visualization
+## Highlights / Features
 
-### User Interface
-- 🎨 Modern and intuitive design
-- 📱 Fully responsive layout
-- 🌙 Dark/Light mode support
-- ⚡ Fast and smooth navigation
+- Member management: add, edit, view members
+- Payments: record payments and view payment history
+- Authentication: sign-in, password reset
+- Responsive UI built with Expo Router and optimized for mobile
+- Initial supabase migrations included in `supabase/migrations`
 
-### Technical Highlights
-- 📦 Built with React Native + Expo
-- 🗄️ Supabase backend integration
-- 🔐 Secure authentication system
-- 🚀 Optimized performance
+## Bug fixes
 
-## Screenshots
+- Fixed path and build-related issues that surfaced during early development
 
-### Member Dashboard
-![Member Dashboard](screenshots/img1.jpg)
-*Main dashboard showing member statistics and quick actions*
+## Upgrade notes
 
-### Payment Interface
-![Payment Interface](screenshots/img2.jpg)
-*Payment processing and history interface*
+- This release targets Expo SDK 53 and React Native 0.79.3. If you upgrade Expo or React Native, test native modules (camera, image-picker, webview) carefully.
+- Node_modules and lock files are not included in the repo; run `npm install` (or `yarn`) before building.
 
-### Member Registration
-![Member Registration](screenshots/img3.jpg)
-*New member registration form with profile setup*
+## Testing / QA notes
 
-### Reports and Analytics
-![Analytics Dashboard](screenshots/img4.jpg)
-*Comprehensive reporting and analytics view*
+- Manual QA performed on Android emulators and a physical Android device.
+- Automated tests are not included in this initial release; consider adding unit and E2E tests in subsequent releases.
 
-## Installation
+## Screenshots (placeholders)
 
-```bash
-# Clone the repository
-git clone https://github.com/PawanLambole/haji-fitness-point.git
+Replace these placeholder links with the real screenshots when available.
 
-# Install dependencies
-cd haji-fitness-point
-npm install
+- ![Home screen](https://example.com/im1.png)
+- ![Member list](https://example.com/im2.png)
+- ![Add member form](https://example.com/im3.png)
 
-# Run the application
-npm run dev
-```
+## How to build locally
 
-## System Requirements
+1. Clone the repo
+2. Install dependencies: `npm install` or `yarn`
+3. Start the dev server: `npm run dev`
+4. Run on Android: `npm run android`
 
-- Node.js 18.0 or higher
-- Expo CLI
-- Android Studio (for Android development)
-- Xcode (for iOS development)
-- Minimum 4GB RAM
-- 2GB free storage space
+## Notes for maintainers
 
-## Configuration
+- Tag: `v1.0.0` has been created and pushed.
+- Release artifacts: there are no compiled binaries attached; publish APK/AAB via EAS or local build if needed.
 
-1. Set up environment variables:
-   ```
-   EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
-   EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_key
-   ```
+If you'd like, I can create a GitHub release using this markdown as the release body and optionally upload screenshots (you'll need to supply them or allow me to use placeholder files). 
 
-2. Configure your database schema using the provided migration files
-
-## Known Issues
-
-- None reported in this initial release
-
-## Upcoming Features
-
-- 📱 Mobile app notifications
-- 📊 Advanced reporting features
-- 🔄 Automated backup system
-- 📈 Enhanced analytics dashboard
-
-## Contributors
-
-- Pawan Lambole (Lead Developer)
-
-## Support
-
-For support and bug reports, please create an issue in the GitHub repository or contact support at [support@hajifit.com](mailto:support@hajifit.com)
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-*Note: Screenshot images are placeholders. Replace them with actual application screenshots before publishing.*
