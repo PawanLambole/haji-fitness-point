@@ -1,54 +1,107 @@
-(# Haji Fitness Point — Release v1.0.0)
+# Haji Fitness Point — Release v1.0.0 (Initial Release)
 
-Release date: 2025-10-02
+![App Dashboard](https://example.com/im1.png)
+*Main Dashboard / Home screen (placeholder)*
 
-This document contains the release notes for v1.0.0 of Haji Fitness Point.
+## Overview
 
-## Summary
+Haji Fitness Point is a mobile-first fitness management app designed for small gyms and training centers. This release introduces member management, payments, session tracking, and admin settings powered by Expo + React Native with Supabase as the backend.
 
-Initial stable release of the Haji Fitness Point mobile app. This release includes core member management, payments, and authentication features implemented with Expo + React Native and Supabase as the backend.
+## Core Functionalities
 
-## Highlights / Features
+### 1. Member Management
+**Description**: Add, edit, and manage member profiles with contact details and membership status.
+- Features:
+	- Create and edit member profiles
+	- Member search and list view
+	- Member detail pages with activity and payment history
+  
+### 2. Payments & Billing
+**Description**: Record payments, track due payments and generate receipts.
+- Features:
+	- Record one-time and recurring payments
+	- View payment history per member
+	- Simple receipt generation (PDF export via mobile share)
 
-- Member management: add, edit, view members
-- Payments: record payments and view payment history
-- Authentication: sign-in, password reset
-- Responsive UI built with Expo Router and optimized for mobile
-- Initial supabase migrations included in `supabase/migrations`
+### 3. Authentication & Security
+**Description**: Secure login and password workflows using Supabase auth.
+- Features:
+	- Email-based sign-in
+	- Password reset flow
+	- Role-based views for admin vs staff
 
-## Bug fixes
+### 4. Member Check-in & Session Tracking
+**Description**: Track member visits and session attendance.
+- Features:
+	- Quick check-in screen
+	- Attendance logs per member
+	- Basic analytics for visits per day/week
 
-- Fixed path and build-related issues that surfaced during early development
+## Technical Architecture
 
-## Upgrade notes
+### Frontend
+- Framework: Expo (React Native)
+- Navigation: Expo Router
+- Key libraries: React Navigation, Reanimated, Expo Camera/ImagePicker
 
-- This release targets Expo SDK 53 and React Native 0.79.3. If you upgrade Expo or React Native, test native modules (camera, image-picker, webview) carefully.
-- Node_modules and lock files are not included in the repo; run `npm install` (or `yarn`) before building.
+### Backend
+- BaaS: Supabase (Postgres + Auth + Storage)
+- Migrations: `supabase/migrations`
 
-## Testing / QA notes
+### Deployment
+- Mobile builds: EAS / Expo build
 
-- Manual QA performed on Android emulators and a physical Android device.
-- Automated tests are not included in this initial release; consider adding unit and E2E tests in subsequent releases.
+## Security Features
+
+- Secure authentication via Supabase
+- Input validation to mitigate XSS
+- Prepared statements via Postgres to mitigate SQL injection
+
+## Performance Optimizations
+
+- Lazy-loading screens
+- Optimized list rendering for members
+- Use of local caching where appropriate
 
 ## Screenshots (placeholders)
 
-Replace these placeholder links with the real screenshots when available.
+Replace the links with real screenshots when available:
 
-- ![Home screen](https://example.com/im1.png)
-- ![Member list](https://example.com/im2.png)
-- ![Add member form](https://example.com/im3.png)
+- ![Dashboard](https://example.com/im1.png)
+- ![Members List](https://example.com/im2.png)
+- ![Add Member](https://example.com/im3.png)
+- ![Payments](https://example.com/im4.png)
 
-## How to build locally
+## Installation Requirements
 
-1. Clone the repo
+### Prerequisites
+- Node.js (LTS) and npm or yarn
+- Expo CLI (optional but helpful)
+- Android Studio / Xcode for emulators
+
+### Setup Instructions
+1. Clone repository
 2. Install dependencies: `npm install` or `yarn`
-3. Start the dev server: `npm run dev`
-4. Run on Android: `npm run android`
+3. Configure `.env` with Supabase URL & anon key
+4. Run Supabase migrations in `supabase/migrations`
+5. Start dev server: `npm run dev`
 
-## Notes for maintainers
+## Known Limitations
 
-- Tag: `v1.0.0` has been created and pushed.
-- Release artifacts: there are no compiled binaries attached; publish APK/AAB via EAS or local build if needed.
+- No automated tests in this initial release
+- File upload size limits depend on Supabase storage configuration
+- Offline support limited to local caching (not full sync)
 
-If you'd like, I can create a GitHub release using this markdown as the release body and optionally upload screenshots (you'll need to supply them or allow me to use placeholder files). 
+## Upcoming Features
+
+- Mobile receipt/PDF attachments
+- Push notifications for membership renewals
+- Multi-currency billing and payment gateway integration
+- Role-based team management and permissions
+
+---
+
+For support or feedback, open an issue in the repository or contact the maintainer.
+
+If you'd like, I can create the GitHub Release for tag `v1.0.0` using this content and attach placeholder screenshots to the release assets. Let me know if you want me to upload dummy images into `screenshots/` first.
 
